@@ -8,9 +8,9 @@ My codes is modified from the code from https://github.com/ywk991112/pytorch-cha
 #### Seq2seq
 Train the seq2seq model with pretrained word2vector model.
 ```
-python main.py -tr <CORPUS_FILE_PATH> -pre <PRETRAINED_MODEL_FILE_PATH> -la 1 -hi 300 -lr 0.0001 -it 50000 -b 64 -p 500 -s 1000
+python main.py -tr <CORPUS_FILE_PATH> -ic <CORPUS_INDEX_FILE_PATH> -st <FREQUENCY_BOUNDARY> -pre <PRETRAINED_MODEL_FILE_PATH> -la 1 -hi 300 -lr 0.0001 -it 50000 -b 64 -p 500 -s 1000
 ```
-> python main.py -tr ./data/movie_subtitles_en.txt -pre ./save/model/GoogleNews-vectors-negative300.bin -la 1 -hi 300 -lr 0.0001 -it 50000 -b 64 -p 500 -s 1000
+> python main.py -tr ./data/movie_lines.txt -ic ./data/movie_conversations.txt -st 3 -pre ./save/model/GoogleNews-vectors-negative300.bin -la 1 -hi 300 -lr 0.0001 -it 50000 -b 64 -p 500 -s 1000
 ### Test
 Test the seq2seq model
 #### test randomly
