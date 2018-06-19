@@ -57,14 +57,14 @@ def makepairs(lines, index_lines):
     pairs = []
     pair = []
     print("Making pairs...")
-    index2group = {}
+    index2seq = {}
     for line in lines:
         line_sp = line.split(' ')
         index = line_sp[0]
-        index2group[index] = line_combine(line_sp[8:])
+        index2seq[index] = line_combine(line_sp[8:])
     for group in index_lines:
         for i in group:
-            pair.append(index2group[i])
+            pair.append(normalizeString(index2seq[i]))
         pairs.append(pair)
         pair = []
     print("Pairs is completly made!")
@@ -108,8 +108,8 @@ def filterPairs(pairs):
 def prepareData(corpus, corpus_name, corpus_index, corpus_index_name):
     voc, pairs = readVocs(corpus, corpus_name, corpus_index, corpus_index_name)
     print("Read {!s} sentence pairs".format(len(pairs)))
-    pairs = filterPairs(pairs)
-    print("Trimmed to {!s} sentence pairs".format(len(pairs)))
+    #pairs = filterPairs(pairs)
+    #print("Trimmed to {!s} sentence pairs".format(len(pairs)))
     print("Counting words...")
     for pair in pairs:
         for i in range(len(pair)):

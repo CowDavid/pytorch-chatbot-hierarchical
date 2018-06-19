@@ -88,16 +88,87 @@ def outputVar(l, voc):
 # sort list of (input, output) pairs by input length, reverse input
 # return input, lengths for pack_padded_sequence, output_variable, mask
 def batch2TrainData(voc, pair_batch, reverse):
+    #print("--------------------original batch--------------------------")
+    #pprint.pprint(pair_batch)
+    out_seq2in_index = out_in_table(pair_batch)
+    
+    pair_batch = pair_batch_transform(pair_batch)#strip off the middle square brackets
+    #[ [ [A1,A2], [A2,A3], [A3,A4] ] , [ [B1,B2] ],...] to [ [A1,A2], [A2,A3], [A3,A4], [B1,B2],...]
+    #print("--------------------batch stripped off brackets--------------------------")
+    #pprint.pprint(pair_batch)
     if reverse:
         pair_batch = [pair[::-1] for pair in pair_batch]
     pair_batch.sort(key=lambda x: len(x[0].split(" ")), reverse=True)
+    #print("--------------------sorted batch--------------------------")
+    #pprint.pprint(pair_batch)
+    old_index2new_index, pair_batch = index_table(pair_batch)#build index table, strip off the head(old index) of seq
+    #print("--------------------head-cut batch--------------------------")
+    #pprint.pprint(pair_batch)
+    #print("--------------------out_seq2in_index--------------------------")
+    #pprint.pprint(out_seq2in_index)
+    #print("--------------------old_index2new_index--------------------------")
+    #pprint.pprint(old_index2new_index)
     input_batch, output_batch = [], []
     for i in range(len(pair_batch)):
         input_batch.append(pair_batch[i][0])
         output_batch.append(pair_batch[i][1])
     input, lengths = inputVar(input_batch, voc)
     output, mask, max_target_len = outputVar(output_batch, voc)
-    return input, lengths, output, mask, max_target_len
+    return input, lengths, output, mask, max_target_len, out_seq2in_index, old_index2new_index
+def index_table(pair_batch):
+    old_index2new_index = {}
+    new_pair_batch = []
+    for i in range(len(pair_batch)):
+        pair_buf_in = pair_batch[i][0].split(' ')
+        old_index2new_index[int(pair_buf_in[0])] = i # int(pair_buf_in[0]) = old_index, i = new_index
+        #pair_buf = [line_combine(pair_buf_in[1:]).strip(), pair_batch[i][1]]
+        new_pair_batch.append([line_combine(pair_buf_in[1:]).strip(), pair_batch[i][1]])
+    return old_index2new_index, new_pair_batch
+def line_combine(line_split):
+    line_comb = ''
+    for i in line_split:
+        line_comb += i
+        line_comb += ' '
+    return line_comb
+def out_in_table(pair_batch):#unsorted batch, and the middle square brackets have not been stripped off
+    out_seq2in_index = {}
+    count = 0
+    start_of_group = 0
+    for group in pair_batch:
+        for i_pair in range(len(group)):
+            out_seq2in_index[group[i_pair][1]] = [ int(group[i][0].split(" ")[0]) for i in range(0, i_pair+1)]
+            count += 1
+        start_of_group = count
+    return out_seq2in_index
+def pair_batch_transform(pair_batch):
+    new_pair_batch = []
+    for group in pair_batch:
+        for pair in group:
+            new_pair_batch.append(pair)
+    return new_pair_batch
+def pairs_transform(pairs):
+    new_pairs = []
+    new_pair = []
+    output_seq = []
+    #start_of_group = 0
+    count = 0
+    #out_seq2in_index= {}
+    pair_buf = []
+    for pair in pairs:
+        for i in range(len(pair)-1):
+            input_seq = str(count) + ' ' + pair[i]#add index of the seq at the top of the seq
+            new_pair.append(input_seq.strip())
+            new_pair.append(pair[i+1].strip())
+            pair_buf.append(new_pair)
+            #out_seq2in_index[new_pair[1]] = [i for i in range(start_of_group, count + 1)]# count = the index of pair(unsorted) now
+            new_pair = []
+            count += 1
+        #start_of_group = count
+        new_pairs.append(pair_buf)
+        pair_buf = []
+    #new_pairs= [ [ [A1,A2], [A2,A3], [A3,A4] ] , [ [B1,B2] ],...]
+    return new_pairs #, out_seq2in_index
+
 
 #############################################
 # Training
@@ -110,7 +181,7 @@ def maskNLLLoss(input, target, mask):
     loss = loss.cuda() if USE_CUDA else loss
     return loss, nTotal.data[0]
 
-def train(input_variable, lengths, target_variable, mask, max_target_len, encoder, decoder, embedding, 
+def train(input_variable, lengths, target_variable, mask, max_target_len, out_seq2in_index, old_index2new_index, encoder, decoder, embedding, 
           encoder_optimizer, decoder_optimizer, batch_size, w2v_model, voc, max_length=MAX_LENGTH):
 
     encoder_optimizer.zero_grad()
@@ -170,12 +241,11 @@ def train(input_variable, lengths, target_variable, mask, max_target_len, encode
 
     return sum(print_losses) / n_totals 
 
-
-def trainIters(corpus, args.corpus_index, args.strip, pre_modelFile, reverse, n_iteration, learning_rate, batch_size, n_layers, hidden_size, 
+def trainIters(corpus, corpus_index, strip, pre_modelFile, reverse, n_iteration, learning_rate, batch_size, n_layers, hidden_size, 
                 print_every, save_every, loadFilename=None, attn_model='dot', decoder_learning_ratio=5.0):
 
     voc, pairs = loadPrepareData(corpus, corpus_index, strip)
-
+    pairs = pairs_transform(pairs)#transform [seq1,seq2,...] to [concatenated_input_seqi,seqi+1]
     # training data
     corpus_name = os.path.split(corpus)[-1].split('.')[0]
     training_batches = None
@@ -252,9 +322,9 @@ def trainIters(corpus, args.corpus_index, args.strip, pre_modelFile, reverse, n_
 
     for iteration in tqdm(range(start_iteration, n_iteration + 1)):
         training_batch = training_batches[iteration - 1]
-        input_variable, lengths, target_variable, mask, max_target_len = training_batch
+        input_variable, lengths, target_variable, mask, max_target_len, out_seq2in_index, old_index2new_index = training_batch
 
-        loss = train(input_variable, lengths, target_variable, mask, max_target_len, encoder,
+        loss = train(input_variable, lengths, target_variable, mask, max_target_len, out_seq2in_index, old_index2new_index, encoder,
                      decoder, embedding, encoder_optimizer, decoder_optimizer, batch_size, w2v_model, voc)
         print_loss += loss
         perplexity.append(loss)
